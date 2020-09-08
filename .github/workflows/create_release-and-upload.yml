@@ -1,0 +1,101 @@
+name: create-release-upload
+
+on: 
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+  create_releases:
+    name: create-releases
+    runs-on: ubuntu-latest
+    outputs:
+      release_url: ${{ steps.output_url.outputs.upload_url }}
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          Changes in this Release
+          - First Change
+          - Second Change
+        draft: false
+        prerelease: true
+      continue-on-error: true
+    - name: Get release
+      if: steps.create_release.outcome == 'failure'
+      id: get_release
+      uses: bruceadams/get-release@v1.2.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: output url
+      id: output_url
+      run: |
+        echo "::set-output name=upload_url::${{steps.get_release.outputs.upload_url}}${{steps.create_release.outputs.upload_url}}"
+
+  upload_object:
+    name: create asset
+    runs-on: ${{ matrix.os }}
+    needs: create_releases
+    strategy:
+      matrix:
+        os: [windows-2019, macos-10.15, ubuntu-20.04]
+        include:
+          - os: windows-2019
+            asset_name: cfd-cli-win64
+          - os: ubuntu-20.04
+            asset_name: cfd-cli-linux
+          - os: macos-10.15
+            asset_name: cfd-cli-macos
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    - name: output url
+      id: output_url
+      run: echo "::set-output name=upload_url::${{ needs.create_releases.outputs.release_url }}"
+    - name: Get the version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      shell: bash
+    - uses: actions-rs/cargo@v1.0.1
+      name: build
+      with:
+        command: build
+        args: --release --all-features
+    - name: create archive windows
+      if: runner.os == 'Windows'
+      run: |
+        cd target/release
+        Compress-Archive -Path ./cfd-cli-rust.exe -DestinationPath ../../cfd.zip
+    - name: create archive linux
+      if: runner.os == 'Linux'
+      run: |
+        cd target/release
+        zip -r ../../cfd.zip cfd-cli-rust
+    - name: create archive mac
+      if: runner.os == 'macOS'
+      run: |
+        cd target/release
+        zip -r ../../cfd.zip cfd-cli-rust
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.output_url.outputs.upload_url }}
+        asset_path: ./cfd.zip
+        asset_name: ${{ matrix.asset_name }}-${{ steps.get_version.outputs.VERSION }}.zip
+        asset_content_type: application/zip
+
