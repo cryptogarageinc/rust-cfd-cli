@@ -28,12 +28,12 @@ fn main() {
     .long("file")
     .takes_value(true);
 
-  let app = App::new("cfd_tester")
-    .about("cfd test CLI")
+  let app = App::new("rust-cfd-cli")
+    .about("cfd CLI tool")
     .version(VERSION)
     .subcommand(
       SubCommand::with_name("decoderawtransaction")
-        .about("decde raw transaction data.")
+        .about("decode raw transaction data.")
         .arg(tx_arg.clone())
         .arg(file_arg.clone())
         .arg(network_arg.clone()),
